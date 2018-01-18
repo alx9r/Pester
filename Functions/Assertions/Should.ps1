@@ -50,7 +50,7 @@ function New-ShouldErrorRecord ([string] $Message, [string] $File, [string] $Lin
     $errorID = 'PesterAssertionFailed'
     $errorCategory = [Management.Automation.ErrorCategory]::InvalidResult
     # we use ErrorRecord.TargetObject to pass structured information about the error to a reporting system.
-    $targetObject = @{Message = $Message; File = $File; Line = $Line; LineText = $LineText}
+    $targetObject = @{Message = $Message; File = $File; Line = $Line; LineText = $LineText; StackTraceOutput = 'OneLine'}
     $errorRecord = & $SafeCommands['New-Object'] Management.Automation.ErrorRecord $exception, $errorID, $errorCategory, $targetObject
     return $errorRecord
 }

@@ -445,23 +445,13 @@ function ConvertTo-FailureLines
             $traceLines = $ErrorRecord.ScriptStackTrace.Split([Environment]::NewLine, [System.StringSplitOptions]::RemoveEmptyEntries)
         }
 
-        $count = 0
-
         # omit the lines internal to Pester
+        $count = 0
+        $pathPattern = [regex]::Escape((Get-Module Pester)[0].ModuleBase)
 
-        If ((GetPesterOS) -ne 'Windows') {
-
-            [String]$pattern1 = '^at (Invoke-Test|Context|Describe|InModuleScope|Invoke-Pester), .*/Functions/.*.ps1: line [0-9]*$'
-            [String]$pattern2 = '^at Should<End>, .*/Functions/Assertions/Should.ps1: line [0-9]*$'
-            [String]$pattern3 = '^at Assert-MockCalled, .*/Functions/Mock.ps1: line [0-9]*$'
-        }
-        Else {
-
-            [String]$pattern1 = '^at (Invoke-Test|Context|Describe|InModuleScope|Invoke-Pester), .*\\Functions\\.*.ps1: line [0-9]*$'
-            [String]$pattern2 = '^at Should<End>, .*\\Functions\\Assertions\\Should.ps1: line [0-9]*$'
-            [String]$pattern3 = '^at Assert-MockCalled, .*\\Functions\\Mock.ps1: line [0-9]*$'
-
-        }
+        [String]$pattern1 = "^at (Invoke-Test|Context|Describe|DescribeImpl|InModuleScope|Invoke-Pester), $pathPattern.*.ps1: line [0-9]*$"
+        [String]$pattern2 = "^at (Should<End>|Invoke-Assertion), $pathPattern.*Should.ps1: line [0-9]*$"
+        [String]$pattern3 = "^at Assert-MockCalled, $pathPattern.*Mock.ps1: line [0-9]*$"
 
         foreach ( $line in $traceLines )
         {
@@ -471,12 +461,21 @@ function ConvertTo-FailureLines
             }
             $count ++
         }
-        $lines.Trace += $traceLines |
+        $externalTraceLines = $traceLines |
             & $SafeCommands['Select-Object'] -First $count |
             & $SafeCommands['Where-Object'] {
                 $_ -notmatch $pattern2 -and
                 $_ -notmatch $pattern3
             }
+
+        if ( 'OneLine' -eq $ErrorRecord.TargetObject.StackTraceOutput )
+        {
+            $lines.Trace += $externalTraceLines | Select -Last 1
+        }
+        else
+        {
+            $lines.Trace += $externalTraceLines
+        }
 
         return $lines
     }

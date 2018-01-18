@@ -184,6 +184,8 @@ InModuleScope -ModuleName Pester -ScriptBlock {
     }
 
     Describe ConvertTo-FailureLines {
+        function lineNumber { $MyInvocation.ScriptLineNumber }
+
         $testPath = Join-Path $TestDrive test.ps1
         $escapedTestPath = [regex]::Escape($testPath)
         It 'produces correct message lines.' {
@@ -208,45 +210,40 @@ InModuleScope -ModuleName Pester -ScriptBlock {
             $r.Message[6] | Should -match "'One' | Should -be 'Two'"
             $r.Message.Count | Should -be 7
         }
-# # todo: commented out because it does not work becuase of should, hopefully we can fix that later
-#         Context 'should fails in file' {
-#             Set-Content -Path $testPath -Value @'
-#             $script:IgnoreErrorPreference = 'SilentlyContinue'
-#             'One' | Should -Be 'Two'
-# '@
+        Context 'should fails in file' {
+            Set-Content -Path $testPath -Value {
+                {
+                    $script:IgnoreErrorPreference = 'SilentlyContinue'
+                    'One' | Should -Be 'Two'
+                }
+            }
 
-#             try { & $testPath } catch { $e = $_ }
-#             $r = $e | ConvertTo-FailureLines
+            try { & (& $testPath) } catch { $e = $_ }; $lineNumber = lineNumber
 
-#             It 'produces correct message lines.' {
+            $r = $e | ConvertTo-FailureLines
 
-
-#                 $r.Message[0] | Should -be 'String lengths are both 3. Strings differ at index 0.'
-#                 $r.Message[1] | Should -be 'Expected: {Two}'
-#                 $r.Message[2] | Should -be 'But was:  {One}'
-#                 $r.Message[3] | Should -be '-----------^'
-#                 $r.Message[4] | Should -be "2:                 'One' | Should -be 'Two'"
-#                 $r.Message.Count | Should -be 5
-#             }
-#             if ( $e | Get-Member -Name ScriptStackTrace )
-#             {
-#                 It 'produces correct trace lines.' {
-#                     $r.Trace[0] | Should -be "at <ScriptBlock>, $testPath`: line 2"
-#                     $r.Trace[1] -match 'at <ScriptBlock>, .*\\Functions\\Output.Tests.ps1: line [0-9]*$' |
-#                         Should -be $true
-#                     $r.Trace.Count | Should -be 3
-#                 }
-#             }
-#             else
-#             {
-#                 It 'produces correct trace lines.' {
-#                     $r.Trace[0] | Should -be "at line: 2 in $testPath"
-#                     $r.Trace.Count | Should -be 1
-#                 }
-#             }
-#         }
+            It 'produces correct message lines' {
+                [bool]($r.Message -match 'Expected: {Two}') | Should -be $true
+                [bool]($r.Message -match 'But was:  {One}') | Should -be $true
+                $r.Message.Count | Should -BeGreaterOrEqual 7
+            }
+            if ( $e | Get-Member -Name ScriptStackTrace )
+            {
+                It 'produces correct trace line' {
+                    $r.Trace[0] | Should -Match "at <ScriptBlock>, .*Output\.Tests\.ps1: line $lineNumber"
+                    $r.Trace.Count | Should -be 1
+                }
+            }
+            else
+            {
+                It 'produces correct trace line' {
+                    $r.Trace[0] | Should -Match "at line: $lineNumber"
+                    $r.Trace.Count | Should -be 1
+                }
+            }
+        }
         Context 'exception thrown in nested functions in file' {
-            Set-Content -Path $testPath -Value @'
+            Set-Content -Path $testPath -Value {
                 function f1 {
                     throw 'f1 message'
                 }
@@ -254,9 +251,9 @@ InModuleScope -ModuleName Pester -ScriptBlock {
                     f1
                 }
                 f2
-'@
+            }
 
-            try { & $testPath } catch { $e = $_ }
+            try { & $testPath } catch { $e = $_ }; $lineNumber = lineNumber
 
             $r = $e | ConvertTo-FailureLines
 
@@ -265,37 +262,25 @@ InModuleScope -ModuleName Pester -ScriptBlock {
             }
             if ( $e | Get-Member -Name ScriptStackTrace )
             {
-                if ((GetPesterOS) -ne 'Windows') {
-                    It 'produces correct trace lines.' {
-                        $r.Trace[0] | Should -be "at f1, $testPath`: line 2"
-                        $r.Trace[1] | Should -be "at f2, $testPath`: line 5"
-                        $r.Trace[2] | Should -be "at <ScriptBlock>, $testPath`: line 7"
-                        $r.Trace[3] -match 'at <ScriptBlock>, .*/Functions/Output.Tests.ps1: line [0-9]*$' |
-                            Should -be $true
-                        $r.Trace.Count | Should -be 5
-                    }
-                }
-                else {
-                    It 'produces correct trace lines.' {
-                        $r.Trace[0] | Should -be "at f1, $testPath`: line 2"
-                        $r.Trace[1] | Should -be "at f2, $testPath`: line 5"
-                        $r.Trace[2] | Should -be "at <ScriptBlock>, $testPath`: line 7"
-                        $r.Trace[3] -match 'at <ScriptBlock>, .*\\Functions\\Output.Tests.ps1: line [0-9]*$' |
-                            Should -be $true
-                        $r.Trace.Count | Should -be 5
-                    }
+                It 'produces correct trace lines.' {
+                    $r.Trace[0] | Should -be "at f1, $testPath`: line 3"
+                    $r.Trace[1] | Should -be "at f2, $testPath`: line 6"
+                    $r.Trace[2] | Should -be "at <ScriptBlock>, $testPath`: line 8"
+                    $r.Trace[3] -match "at <ScriptBlock>, .*Output\.Tests\.ps1: line $lineNumber$" |
+                        Should -be $true
+                    $r.Trace.Count | Should -be 4
                 }
             }
             else
             {
                 It 'produces correct trace lines.' {
-                    $r.Trace[0] | Should -be "at line: 2 in $testPath"
+                    $r.Trace[0] | Should -Match "at line: $lineNumber"
                     $r.Trace.Count | Should -be 1
                 }
             }
         }
         Context 'nested exceptions thrown in file' {
-            Set-Content -Path $testPath -Value @'
+            Set-Content -Path $testPath -Value {
                 try
                 {
                     throw New-Object System.ArgumentException(
@@ -310,9 +295,9 @@ InModuleScope -ModuleName Pester -ScriptBlock {
                         $_.Exception
                     )
                 }
-'@
+            }
 
-            try { & $testPath } catch { $e = $_ }
+            try { & $testPath } catch { $e = $_ }; $lineNumber = lineNumber
 
             $r = $e | ConvertTo-FailureLines
 
@@ -323,28 +308,56 @@ InModuleScope -ModuleName Pester -ScriptBlock {
             }
             if ( $e | Get-Member -Name ScriptStackTrace )
             {
-                if ((GetPesterOS) -ne 'Windows') {
-                    It 'produces correct trace line.' {
-                        $r.Trace[0] | Should -be "at <ScriptBlock>, $testPath`: line 10"
-                        $r.Trace[1] -match 'at <ScriptBlock>, .*/Functions/Output.Tests.ps1: line [0-9]*$'
-                        $r.Trace.Count | Should -be 3
-                    }
-                }
-                else {
-                    It 'produces correct trace line.' {
-                        $r.Trace[0] | Should -be "at <ScriptBlock>, $testPath`: line 10"
-                        $r.Trace[1] -match 'at <ScriptBlock>, .*\\Functions\\Output.Tests.ps1: line [0-9]*$'
-                        $r.Trace.Count | Should -be 3
-                    }
+                It 'produces correct trace line.' {
+                    $r.Trace[0] | Should -be "at <ScriptBlock>, $testPath`: line 11"
+                    $r.Trace[1] -match "at <ScriptBlock>, .*Output\.Tests\.ps1: line $lineNumber$"
+                    $r.Trace.Count | Should -be 2
                 }
             }
             else
             {
                 It 'produces correct trace line.' {
-                    $r.Trace[0] | Should -be "at line: 10 in $testPath"
+                    $r.Trace[0] | Should -match "at line: $lineNumber"
                     $r.Trace.Count | Should -be 1
                 }
             }
+        }
+        Context "TargetObject.StackTraceOutput is 'Oneline'" {
+            Set-Content -Path $testPath -Value {
+                function f
+                {
+                    param($x)
+                    if ($x -gt 10)
+                    {
+                        throw [System.Management.Automation.ErrorRecord]::new(
+                            [System.Exception]::new('msg'),
+                            'ErrorId',
+                            [System.Management.Automation.ErrorCategory]::InvalidResult,
+                            @{ StackTraceOutput = 'OneLine' }
+                        )
+                    }
+                    else
+                    {
+                        f -x (1+$x)
+                    }
+                }
+                f
+            }
+
+            try { & $testPath } catch { $e = $_ } ; $lineNumber = lineNumber
+
+            $r = $e | ConvertTo-FailureLines
+
+            if ( $e | Get-Member -Name ScriptStackTrace )
+            {
+                It 'produces exactly one trace line' {
+                    $r.Trace.Count | Should -be 1
+                }
+                It 'produces correct trace line' {
+                    $r.Trace[0] | Should -Match "at <ScriptBlock>, .*Output\.Tests\.ps1: line $lineNumber"
+                }
+            }
+
         }
     }
 }
